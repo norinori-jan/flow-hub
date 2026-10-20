@@ -1,0 +1,48 @@
+name: patch next action UI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-next-action.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch next action handling
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8-sig')
+          old="s.lastHandoff=h;save(s);history.replaceState(null,'',location.pathname+location.search)"
+          new="s.lastHandoff=h;s.nextAction=h.payload&&h.payload.nextAction||null;s.nextActionMessage=h.payload&&h.payload.message||'';s.nextActionRecommendation=h.payload&&h.payload.recommendation||null;save(s);history.replaceState(null,'',location.pathname+location.search)"
+          if old not in s:
+              raise SystemExit('handoff marker not found')
+          s=s.replace(old,new,1)
+          old_render="$('#status').textContent=s.lastStatus==='completed'?'完了：'+(s.lastApp||'music-suite')+' から戻りました。':s.started?'セッション中：'+new Date(s.started).toLocaleString('ja-JP'):'セッション未開始';"
+          new_render="$('#status').textContent=s.lastStatus==='completed'?'完了：'+(s.lastApp||'music-suite')+' から戻りました。':s.started?'セッション中：'+new Date(s.started).toLocaleString('ja-JP'):'セッション未開始';const n=s.nextActionRecommendation;if(n&&n.app&&apps[n.app]){$('#purposeBody').innerHTML='<div class=\"sub\">music-suiteでの制作が完了しました。</div><div class=\"next-action\"><div class=\"body\"><b>'+n.label+'</b><div class=\"sub\">'+(s.nextActionMessage||'続きの作業を選べます。')+'</div></div><button class=\"pri small\" data-app=\"'+n.app+'\">続ける</button></div>'; }"
+          if old_render not in s:
+              raise SystemExit('render marker not found')
+          s=s.replace(old_render,new_render,1)
+          css_marker='.small{min-height:36px;padding:7px 10px;font-size:13px}'
+          css_add='.next-action{display:flex;align-items:center;gap:12px;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#121c27}.next-action .body{flex:1}'
+          if css_add not in s:
+              s=s.replace(css_marker,css_marker+css_add,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git commit -m "Show music-suite next action in flow-hub"
+          git push
